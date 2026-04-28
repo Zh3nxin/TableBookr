@@ -12,16 +12,16 @@ function timeValue(timeString) {
 
 async function main() {
   const restaurant = await prisma.restaurant.upsert({
-    where: { slug: "harbor-table" },
+    where: { slug: "test-restaurant" },
     update: {
-      name: "Harbor Table",
+      name: "Test Restaurant",
       email: "bookings@harbortable.example",
       phone: "+4512345678",
       timezone: "Europe/Copenhagen"
     },
     create: {
-      name: "Harbor Table",
-      slug: "harbor-table",
+      name: "Test Restaurant",
+      slug: "test-restaurant",
       email: "bookings@harbortable.example",
       phone: "+4512345678",
       timezone: "Europe/Copenhagen"

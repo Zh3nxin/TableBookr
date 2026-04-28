@@ -3,11 +3,11 @@ import { Body, Controller, Get, Param, Post } from "@nestjs/common";
 import { AvailabilityService } from "../availability/availability.service";
 import { BookingsService } from "../bookings/bookings.service";
 import { RestaurantsService } from "../restaurants/restaurants.service";
-import { AvailabilityRequestDto } from "./dto/availability-request.dto";
-import { CreateBookingDto } from "./dto/create-booking.dto";
+import { AvailabilityRequestDto } from "./dtos/availability-request.dto";
+import { CreateBookingDto } from "./dtos/create-booking.dto";
 
 @Controller("public/restaurants")
-export class PublicController {
+export class PublicBookingController {
   constructor(
     private readonly restaurantsService: RestaurantsService,
     private readonly availabilityService: AvailabilityService,

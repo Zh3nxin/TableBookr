@@ -7,11 +7,11 @@ import {
   useEffect,
   useMemo,
   useRef,
-  useState,
-  ViewTransition
+  useState
 } from "react";
 import { usePathname, useRouter } from "next/navigation";
 
+import { useLanguage } from "@/i18n/language-provider";
 import { ApiError, createBooking, fetchAvailability } from "@/lib/api/public-booking";
 import {
   AvailabilitySlot,
@@ -19,18 +19,19 @@ import {
   PublicRestaurantResponse
 } from "@/lib/types/public-booking";
 
-import { BookingFlowShell } from "./booking-flow-shell";
-import { HelpIcon } from "./booking-flow-icons";
 import {
+  BookingConfirmationDetails,
   BookingResultState,
   BookingSummaryItem,
   ContactErrors,
   ContactValues
-} from "./booking-flow-types";
-import { StepOneReservation } from "./step-one-reservation";
-import { StepTwoContact } from "./step-two-contact";
+} from "@/components/booking/booking-types";
 
-function formatSpecificDate(value: string) {
+function getLocale(language: "da" | "en") {
+  return language === "da" ? "da-DK" : "en-US";
+}
+
+function formatSpecificDate(value: string, language: "da" | "en") {
   const [year, month, day] = value.split("-").map(Number);
 
   if (!year || !month || !day) {
@@ -39,13 +40,17 @@ function formatSpecificDate(value: string) {
 
   const date = new Date(Date.UTC(year, month - 1, day));
 
-  return new Intl.DateTimeFormat("en-US", {
+  return new Intl.DateTimeFormat(getLocale(language), {
     month: "long",
     day: "numeric"
   }).format(date);
 }
 
-function formatCompactSummaryDate(value: string, timeZone: string) {
+function formatCompactSummaryDate(
+  value: string,
+  timeZone: string,
+  language: "da" | "en"
+) {
   const [year, month, day] = value.split("-").map(Number);
 
   if (!year || !month || !day) {
@@ -54,7 +59,7 @@ function formatCompactSummaryDate(value: string, timeZone: string) {
 
   const date = new Date(Date.UTC(year, month - 1, day));
 
-  return new Intl.DateTimeFormat("en-US", {
+  return new Intl.DateTimeFormat(getLocale(language), {
     timeZone,
     weekday: "short",
     month: "short",
@@ -85,7 +90,17 @@ function areSlotsEqual(left: AvailabilitySlot[], right: AvailabilitySlot[]) {
   );
 }
 
-function getSlotButtonClasses(status: AvailabilitySlot["status"], isSelected: boolean) {
+function runBookingStepTransition(type: "booking-back" | "booking-forward", update: () => void) {
+  startTransition(() => {
+    addTransitionType(type);
+    update();
+  });
+}
+
+export function getSlotButtonClasses(
+  status: AvailabilitySlot["status"],
+  isSelected: boolean
+) {
   if (status === "blocked") {
     return "cursor-not-allowed border-[#d7ddd8] bg-[#f3f3f6] text-[#a1a7a2]";
   }
@@ -101,22 +116,7 @@ function getSlotButtonClasses(status: AvailabilitySlot["status"], isSelected: bo
     : "border-[var(--color-outline-soft)] bg-white text-[var(--color-text)] hover:border-[#274e3d]";
 }
 
-function runBookingStepTransition(type: "booking-back" | "booking-forward", update: () => void) {
-  startTransition(() => {
-    addTransitionType(type);
-    update();
-  });
-}
-
-export function BookingPageClient({
-  restaurant,
-  dateOptions,
-  initialDate,
-  initialSlots,
-  initialGuestCount,
-  initialSelectedTime,
-  initialIsReady
-}: {
+type UseBookingFlowParams = {
   restaurant: PublicRestaurantResponse;
   dateOptions: BookingDateOption[];
   initialDate: string;
@@ -124,7 +124,18 @@ export function BookingPageClient({
   initialGuestCount: number;
   initialSelectedTime: string | null;
   initialIsReady: boolean;
-}) {
+};
+
+export function useBookingFlow({
+  restaurant,
+  dateOptions,
+  initialDate,
+  initialSlots,
+  initialGuestCount,
+  initialSelectedTime,
+  initialIsReady
+}: UseBookingFlowParams) {
+  const { language, messages } = useLanguage();
   const router = useRouter();
   const pathname = usePathname();
   const [guestCount, setGuestCount] = useState(initialGuestCount);
@@ -164,7 +175,9 @@ export function BookingPageClient({
   const selectedDateIsSpecific = !quickDateValues.has(selectedDate);
   const contactStepActive = stepReady && !!selectedSlot;
   const primaryCtaLabel =
-    selectedSlot?.status === "pending" ? "Send booking request" : "Confirm booking";
+    selectedSlot?.status === "pending"
+      ? messages.booking.sendBookingRequest
+      : messages.booking.confirmBooking;
 
   useEffect(() => {
     selectedSlotRef.current = selectedSlot;
@@ -236,7 +249,7 @@ export function BookingPageClient({
           const message =
             error instanceof ApiError
               ? error.message
-              : "Unable to load booking times right now.";
+              : messages.booking.loadAvailabilityFallback;
 
           setSlots([]);
           setSelectedSlot(null);
@@ -256,7 +269,20 @@ export function BookingPageClient({
     return () => {
       isCancelled = true;
     };
-  }, [guestCount, restaurant.slug, selectedDate]);
+  }, [guestCount, messages.booking.loadAvailabilityFallback, restaurant.slug, selectedDate]);
+
+  function formatQuickDateLabel(value: string) {
+    const [year, month, day] = value.split("-").map(Number);
+
+    if (!year || !month || !day) {
+      return value;
+    }
+
+    return new Intl.DateTimeFormat(getLocale(language), {
+      weekday: "short",
+      timeZone: restaurant.timezone
+    }).format(new Date(Date.UTC(year, month - 1, day)));
+  }
 
   function syncStepQuery(nextSelection: {
     guestCount: number;
@@ -349,17 +375,17 @@ export function BookingPageClient({
     const nextErrors: ContactErrors = {};
 
     if (!contactValues.name.trim()) {
-      nextErrors.name = "Full name is required.";
+      nextErrors.name = messages.booking.validation.nameRequired;
     }
 
     if (!contactValues.email.trim()) {
-      nextErrors.email = "Email is required.";
+      nextErrors.email = messages.booking.validation.emailRequired;
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactValues.email.trim())) {
-      nextErrors.email = "Enter a valid email address.";
+      nextErrors.email = messages.booking.validation.emailInvalid;
     }
 
     if (!contactValues.phone.trim()) {
-      nextErrors.phone = "Phone number is required.";
+      nextErrors.phone = messages.booking.validation.phoneRequired;
     }
 
     setContactErrors(nextErrors);
@@ -392,7 +418,7 @@ export function BookingPageClient({
       const message =
         error instanceof ApiError
           ? error.message
-          : "Unable to complete your booking right now.";
+          : messages.booking.submitBookingFallback;
 
       setSubmissionError(message);
     } finally {
@@ -430,7 +456,7 @@ export function BookingPageClient({
     ? [
         {
           kind: "date",
-          label: formatCompactSummaryDate(selectedDate, restaurant.timezone)
+          label: formatCompactSummaryDate(selectedDate, restaurant.timezone, language)
         },
         {
           kind: "time",
@@ -438,121 +464,48 @@ export function BookingPageClient({
         },
         {
           kind: "guests",
-          label: `${guestCount} Guest${guestCount === 1 ? "" : "s"}`
+          label: messages.formatters.guests(guestCount)
         }
       ]
     : [];
 
-  return (
-    <div className="flex min-h-screen flex-col bg-[var(--color-page)] text-[var(--color-text)]">
-      <header className="fixed top-0 z-50 w-full border-b border-[#eef2ef] bg-white shadow-[0_1px_8px_rgba(148,163,184,0.12)]">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-          <a
-            href="/"
-            className="text-[12px] font-bold uppercase tracking-[0.26em] text-[#0f2e20]"
-          >
-            {restaurant.name}
-          </a>
+  const confirmationDetails: BookingConfirmationDetails = {
+    bookingId: bookingResult?.bookingId,
+    dateLabel: formatCompactSummaryDate(selectedDate, restaurant.timezone, language),
+    timeLabel: selectedSlot?.time ?? "",
+    guestsLabel: messages.formatters.guests(guestCount),
+    durationLabel: messages.formatters.duration(restaurant.bookingDurationMinutes)
+  };
 
-          <button
-            type="button"
-            className="inline-flex items-center gap-2 text-[13px] font-medium text-[#66707a] transition-colors hover:text-[#1f3f31]"
-          >
-            <HelpIcon />
-            <span className="hidden md:inline">Help</span>
-          </button>
-        </div>
-      </header>
-
-      <main
-        className={`mt-8 flex flex-grow flex-col items-center px-6 pb-24 ${
-          contactStepActive ? "justify-start py-12" : "justify-start pt-12"
-        }`}
-      >
-        <ViewTransition
-          default={{
-            default: "none",
-            "booking-back": "slide-back",
-            "booking-forward": "slide-forward"
-          }}
-        >
-          <div className="mb-4 w-full max-w-3xl text-center">
-            <h1 className="mb-2 text-[32px] font-semibold tracking-[-0.02em] text-[var(--color-primary)]">
-              Book Your Table
-            </h1>
-          </div>
-
-          {contactStepActive ? (
-            <BookingFlowShell
-              activeStep={2}
-              headerAction={
-                <button
-                  type="button"
-                  onClick={handleBackToDetails}
-                  className="inline-flex items-center text-[11px] font-normal text-[#7d8781] transition-colors hover:text-[var(--color-primary)]"
-                >
-                  <span>{"<- Back"}</span>
-                </button>
-              }
-            >
-              <StepTwoContact
-                bookingResult={bookingResult}
-                summaryItems={summaryItems}
-                contactValues={contactValues}
-                contactErrors={contactErrors}
-                submissionError={submissionError}
-                isSubmitting={isSubmitting}
-                primaryCtaLabel={primaryCtaLabel}
-                onSubmit={handleSubmitBooking}
-                onBack={handleBackToDetails}
-                onResetAfterResult={handleResetAfterResult}
-                onContactValueChange={handleContactValueChange}
-              />
-            </BookingFlowShell>
-          ) : (
-            <BookingFlowShell activeStep={1}>
-              <StepOneReservation
-                guestCount={guestCount}
-                selectedDate={selectedDate}
-                selectedDateIsSpecific={selectedDateIsSpecific}
-                dateOptions={dateOptions}
-                slots={slots}
-                selectedSlot={selectedSlot}
-                availabilityError={availabilityError}
-                isLoadingSlots={isLoadingSlots}
-                dateInputRef={dateInputRef}
-                formatSpecificDate={formatSpecificDate}
-                getSlotButtonClasses={getSlotButtonClasses}
-                onGuestChange={handleGuestChange}
-                onDateChange={handleDateChange}
-                onSpecificDateClick={handleSpecificDateClick}
-                onSelectSlot={handleSelectSlot}
-                onContinue={handleContinueToContact}
-              />
-            </BookingFlowShell>
-          )}
-        </ViewTransition>
-      </main>
-
-      <footer className="mt-auto w-full border-t border-[#eef2ef] bg-white text-sm text-[#6b7280]">
-        <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-8 py-10 md:flex-row">
-          <div className="text-lg font-bold text-[#0f2e20]">{restaurant.name}</div>
-
-          <div className="flex flex-wrap justify-center gap-6 text-[12px]">
-            <a href="#" className="transition-colors hover:text-[#1f3f31]">
-              Privacy Policy
-            </a>
-            <a href="#" className="transition-colors hover:text-[#1f3f31]">
-              Terms of Service
-            </a>
-            <a href="#" className="transition-colors hover:text-[#1f3f31]">
-              Contact Us
-            </a>
-          </div>
-
-          <div className="text-[12px]">© 2024 {restaurant.name}. All rights reserved.</div>
-        </div>
-      </footer>
-    </div>
-  );
+  return {
+    contactErrors,
+    contactStepActive,
+    contactValues,
+    dateInputRef,
+    availabilityError,
+    bookingResult,
+    confirmationDetails,
+    formatQuickDateLabel,
+    formatSpecificDate: (value: string) => formatSpecificDate(value, language),
+    guestCount,
+    handleBackToDetails,
+    handleContactValueChange,
+    handleContinueToContact,
+    handleDateChange,
+    handleGuestChange,
+    handleResetAfterResult,
+    handleSelectSlot,
+    handleSpecificDateClick,
+    handleSubmitBooking,
+    isLoadingSlots,
+    isSubmitting,
+    messages,
+    primaryCtaLabel,
+    selectedDate,
+    selectedDateIsSpecific,
+    selectedSlot,
+    slots,
+    submissionError,
+    summaryItems
+  };
 }

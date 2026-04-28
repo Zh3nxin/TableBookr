@@ -1,15 +1,22 @@
+"use client";
+
 import { FormEvent } from "react";
 
-import { BookingCreationStatus } from "@/lib/types/public-booking";
-
-import { BookingResultState, BookingSummaryItem, ContactErrors, ContactValues } from "./booking-flow-types";
+import { useLanguage } from "@/i18n/language-provider";
+import {
+  BookingConfirmationDetails,
+  BookingResultState,
+  BookingSummaryItem,
+  ContactErrors,
+  ContactValues
+} from "../booking-types";
 import {
   ArrowRightIcon,
   CalendarIcon,
-  CheckIcon,
   ClockIcon,
   GuestsIcon
-} from "./booking-flow-icons";
+} from "../icons";
+import { StepThreeConfirmation } from "./step-three-confirmation";
 
 function SummaryIcon({ kind }: { kind: BookingSummaryItem["kind"] }) {
   if (kind === "date") {
@@ -23,32 +30,9 @@ function SummaryIcon({ kind }: { kind: BookingSummaryItem["kind"] }) {
   return <GuestsIcon />;
 }
 
-function ResultTitle({ status }: { status: BookingCreationStatus }) {
-  if (status === "confirmed") {
-    return "Booking confirmed";
-  }
-
-  if (status === "pending") {
-    return "Booking request sent";
-  }
-
-  return "Time no longer available";
-}
-
-function ResultMessage({ status }: { status: BookingCreationStatus }) {
-  if (status === "confirmed") {
-    return "Your reservation has been secured. We look forward to welcoming you.";
-  }
-
-  if (status === "pending") {
-    return "Your request has been sent to the restaurant and still needs confirmation.";
-  }
-
-  return "This reservation is no longer available online. Please choose another time.";
-}
-
 export function StepTwoContact({
   bookingResult,
+  confirmationDetails,
   summaryItems,
   contactValues,
   contactErrors,
@@ -56,11 +40,11 @@ export function StepTwoContact({
   isSubmitting,
   primaryCtaLabel,
   onSubmit,
-  onBack,
   onResetAfterResult,
   onContactValueChange
 }: {
   bookingResult: BookingResultState | null;
+  confirmationDetails: BookingConfirmationDetails;
   summaryItems: BookingSummaryItem[];
   contactValues: ContactValues;
   contactErrors: ContactErrors;
@@ -68,58 +52,28 @@ export function StepTwoContact({
   isSubmitting: boolean;
   primaryCtaLabel: string;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
-  onBack: () => void;
   onResetAfterResult: () => void;
   onContactValueChange: (field: keyof ContactValues, value: string) => void;
 }) {
+  const { messages } = useLanguage();
+
   return (
-    <div className="px-8 pb-8 pt-8">
-      <div className="mx-auto max-w-[352px]">
-        {bookingResult ? (
-          <div className="space-y-4 py-4 text-center">
-            <div
-              className={`mx-auto flex h-12 w-12 items-center justify-center rounded-full ${
-                bookingResult.status === "blocked"
-                  ? "bg-[var(--color-error-bg)] text-[var(--color-error-strong)]"
-                  : "bg-[var(--color-primary-fixed)] text-[var(--color-primary)]"
-              }`}
-            >
-              {bookingResult.status === "blocked" ? "!" : <CheckIcon />}
-            </div>
-            <div>
-              <h2 className="text-[32px] font-semibold tracking-[-0.02em] text-[var(--color-primary)]">
-                <ResultTitle status={bookingResult.status} />
-              </h2>
-              <p className="mx-auto mt-2 max-w-md text-[14px] leading-6 text-[var(--color-muted)]">
-                <ResultMessage status={bookingResult.status} />
-              </p>
-            </div>
-            {bookingResult.bookingId ? (
-              <p className="rounded-lg border border-[var(--color-outline-soft)] bg-white px-4 py-3 text-[14px] text-[var(--color-muted)]">
-                Booking ID:{" "}
-                <span className="font-medium text-[var(--color-text)]">
-                  {bookingResult.bookingId}
-                </span>
-              </p>
-            ) : null}
-            <div className="pt-3">
-              <button
-                type="button"
-                onClick={onResetAfterResult}
-                className="inline-flex h-12 w-full items-center justify-center rounded-lg bg-[var(--color-primary)] px-5 text-[15px] font-medium text-white shadow-sm transition-opacity hover:opacity-90"
-              >
-                Make another booking
-              </button>
-            </div>
-          </div>
-        ) : (
+    bookingResult ? (
+      <StepThreeConfirmation
+        bookingResult={bookingResult}
+        details={confirmationDetails}
+        onResetAfterResult={onResetAfterResult}
+      />
+    ) : (
+      <div className="px-8 pb-8 pt-8">
+        <div className="mx-auto max-w-[352px]">
           <form className="space-y-5" onSubmit={onSubmit}>
             <div className="text-center">
               <h2 className="text-[24px] font-semibold tracking-[-0.01em] text-[var(--color-primary)]">
-                Contact Details
+                {messages.booking.contactTitle}
               </h2>
               <p className="mt-2 text-[14px] leading-6 text-[var(--color-muted)]">
-                Please provide your details to confirm your table.
+                {messages.booking.contactSubtitle}
               </p>
             </div>
 
@@ -148,14 +102,14 @@ export function StepTwoContact({
                 className="block text-[13px] font-medium text-[var(--color-text)]"
                 htmlFor="contact-name"
               >
-                Full Name
+                {messages.booking.fullName}
               </label>
               <input
                 id="contact-name"
                 type="text"
                 value={contactValues.name}
                 onChange={(event) => onContactValueChange("name", event.target.value)}
-                placeholder="Enter your full name"
+                placeholder={messages.booking.fullNamePlaceholder}
                 className="h-11 w-full rounded-lg border border-[var(--color-outline-soft)] bg-white px-4 text-[14px] outline-none transition-colors placeholder:text-stone-400 focus:border-[var(--color-primary)] focus:ring-1 focus:ring-[var(--color-primary)]"
               />
               {contactErrors.name ? (
@@ -170,14 +124,14 @@ export function StepTwoContact({
                 className="block text-[13px] font-medium text-[var(--color-text)]"
                 htmlFor="contact-email"
               >
-                Email Address
+                {messages.booking.email}
               </label>
               <input
                 id="contact-email"
                 type="email"
                 value={contactValues.email}
                 onChange={(event) => onContactValueChange("email", event.target.value)}
-                placeholder="email@example.com"
+                placeholder={messages.booking.emailPlaceholder}
                 className="h-11 w-full rounded-lg border border-[var(--color-outline-soft)] bg-white px-4 text-[14px] outline-none transition-colors placeholder:text-stone-400 focus:border-[var(--color-primary)] focus:ring-1 focus:ring-[var(--color-primary)]"
               />
               {contactErrors.email ? (
@@ -192,14 +146,14 @@ export function StepTwoContact({
                 className="block text-[13px] font-medium text-[var(--color-text)]"
                 htmlFor="contact-phone"
               >
-                Phone Number
+                {messages.booking.phone}
               </label>
               <input
                 id="contact-phone"
                 type="tel"
                 value={contactValues.phone}
                 onChange={(event) => onContactValueChange("phone", event.target.value)}
-                placeholder="+1 (555) 000-0000"
+                placeholder={messages.booking.phonePlaceholder}
                 className="h-11 w-full rounded-lg border border-[var(--color-outline-soft)] bg-white px-4 text-[14px] outline-none transition-colors placeholder:text-stone-400 focus:border-[var(--color-primary)] focus:ring-1 focus:ring-[var(--color-primary)]"
               />
               {contactErrors.phone ? (
@@ -221,24 +175,24 @@ export function StepTwoContact({
                 disabled={isSubmitting}
                 className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-[var(--color-primary)] px-5 text-[15px] font-medium text-white shadow-sm transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {isSubmitting ? "Submitting..." : primaryCtaLabel}
+                {isSubmitting ? messages.booking.submitting : primaryCtaLabel}
                 <ArrowRightIcon />
               </button>
             </div>
 
             <p className="pt-0.5 text-center text-[10px] leading-5 text-[var(--color-muted)]">
-              By clicking confirm, you agree to our{" "}
+              {messages.booking.bookingTermsPrefix}{" "}
               <a
                 href="#"
                 className="underline transition-colors hover:text-[var(--color-primary)]"
               >
-                Booking Terms
+                {messages.booking.bookingTermsLink}
               </a>
               .
             </p>
           </form>
-        )}
+        </div>
       </div>
-    </div>
+    )
   );
 }

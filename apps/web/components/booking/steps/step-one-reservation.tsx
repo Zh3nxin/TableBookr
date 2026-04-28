@@ -1,12 +1,15 @@
+"use client";
+
 import { RefObject } from "react";
 
+import { useLanguage } from "@/i18n/language-provider";
 import { AvailabilitySlot, BookingDateOption } from "@/lib/types/public-booking";
 
 import {
   ArrowRightIcon,
   CalendarIcon,
   ChevronDownIcon
-} from "./booking-flow-icons";
+} from "../icons";
 
 const GUEST_BUTTON_VALUES = [1, 2, 3, 4, 5, 6, 7, 8, 9];
 const GUEST_SELECTOR_VALUES = [10, 11, 12, 13, 14, 15, 16];
@@ -22,6 +25,7 @@ export function StepOneReservation({
   isLoadingSlots,
   dateInputRef,
   formatSpecificDate,
+  formatQuickDateLabel,
   getSlotButtonClasses,
   onGuestChange,
   onDateChange,
@@ -39,6 +43,7 @@ export function StepOneReservation({
   isLoadingSlots: boolean;
   dateInputRef: RefObject<HTMLInputElement | null>;
   formatSpecificDate: (value: string) => string;
+  formatQuickDateLabel: (value: string) => string;
   getSlotButtonClasses: (
     status: AvailabilitySlot["status"],
     isSelected: boolean
@@ -49,11 +54,13 @@ export function StepOneReservation({
   onSelectSlot: (slot: AvailabilitySlot) => void;
   onContinue: () => void;
 }) {
+  const { messages } = useLanguage();
+
   return (
     <div className="space-y-6 p-8">
       <section>
         <label className="mb-4 block text-[14px] font-medium text-[var(--color-muted)]">
-          Number of Guests
+          {messages.booking.guestsLabel}
         </label>
         <div className="grid grid-cols-5 gap-2 pb-2 sm:[grid-template-columns:repeat(9,minmax(0,1fr))_1.45fr]">
           {GUEST_BUTTON_VALUES.map((value) => {
@@ -82,7 +89,7 @@ export function StepOneReservation({
             }`}
           >
             <select
-              aria-label="Select guest count from 10 to 16"
+              aria-label={messages.booking.guestSelectorLabel}
               value={guestCount >= 10 ? String(guestCount) : ""}
               onChange={(event) => onGuestChange(Number(event.target.value))}
               className="absolute inset-0 h-full w-full appearance-none rounded-full opacity-0"
@@ -110,7 +117,7 @@ export function StepOneReservation({
       <section>
         <div className="mb-4 flex items-center justify-between gap-4">
           <label className="block text-[14px] font-medium text-[var(--color-muted)]">
-            Select Date
+            {messages.booking.selectDate}
           </label>
           <div className="relative">
             <input
@@ -132,7 +139,9 @@ export function StepOneReservation({
               }`}
             >
               <CalendarIcon />
-              {selectedDateIsSpecific ? formatSpecificDate(selectedDate) : "Specific Date"}
+              {selectedDateIsSpecific
+                ? formatSpecificDate(selectedDate)
+                : messages.booking.specificDate}
             </button>
           </div>
         </div>
@@ -153,7 +162,7 @@ export function StepOneReservation({
                 }`}
               >
                 <span className="text-[10px] font-semibold uppercase opacity-70">
-                  {option.label}
+                  {formatQuickDateLabel(option.value)}
                 </span>
                 <span className="text-[24px] font-semibold leading-[1.3]">
                   {option.dayNumber}
@@ -166,7 +175,7 @@ export function StepOneReservation({
 
       <section>
         <label className="mb-4 block text-[14px] font-medium text-[var(--color-muted)]">
-          Available Times
+          {messages.booking.availableTimes}
         </label>
 
         {!availabilityError && slots.length > 0 ? (
@@ -200,12 +209,14 @@ export function StepOneReservation({
 
         {!availabilityError && slots.length === 0 ? (
           <div className="rounded-lg border border-[var(--color-outline-soft)] bg-[#f3f3f6] px-4 py-3 text-sm text-[var(--color-muted)]">
-            No times available for this date.
+            {messages.booking.noTimesAvailable}
           </div>
         ) : null}
 
         {isLoadingSlots ? (
-          <p className="mt-3 text-[13px] text-[var(--color-muted)]">Updating times...</p>
+          <p className="mt-3 text-[13px] text-[var(--color-muted)]">
+            {messages.booking.updatingTimes}
+          </p>
         ) : null}
       </section>
 
@@ -216,7 +227,7 @@ export function StepOneReservation({
           onClick={onContinue}
           className="inline-flex h-[52px] items-center gap-2 rounded-lg bg-[var(--color-primary)] px-10 text-[15px] font-medium text-white shadow-lg transition-all hover:opacity-90 disabled:cursor-not-allowed disabled:bg-[#8aa497]"
         >
-          Continue to Contact
+          {messages.booking.continueToContact}
           <ArrowRightIcon />
         </button>
       </div>

@@ -1,6 +1,10 @@
+"use client";
+
 import { ReactNode } from "react";
 
-export function BookingFlowShell({
+import { useLanguage } from "@/i18n/language-provider";
+
+export function BookingLayout({
   activeStep,
   headerAction,
   children
@@ -9,6 +13,8 @@ export function BookingFlowShell({
   headerAction?: ReactNode;
   children: ReactNode;
 }) {
+  const { messages } = useLanguage();
+
   return (
     <div className="w-full max-w-2xl overflow-hidden rounded-xl border border-[var(--color-outline-soft)] bg-white shadow-sm">
       <div className="relative flex items-center justify-center border-b border-[#e2e2e5] bg-[#f9f9fc] p-6">
@@ -20,7 +26,7 @@ export function BookingFlowShell({
               1
             </span>
             <span className="text-[14px] font-medium text-[var(--color-primary)]">
-              Reservation
+              {messages.booking.steps.reservation}
             </span>
           </div>
           <div
@@ -43,7 +49,7 @@ export function BookingFlowShell({
                 activeStep === 2 ? "text-[var(--color-primary)]" : "text-[#586062]"
               }`}
             >
-              Contact
+              {messages.booking.steps.contact}
             </span>
           </div>
         </div>

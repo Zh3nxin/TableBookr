@@ -26,7 +26,6 @@ export interface AvailabilityRequest {
 
 export interface BookingDateOption {
   value: string;
-  label: string;
   dayNumber: string;
 }
 

@@ -17,3 +17,11 @@ export type BookingResultState = {
   status: BookingCreationStatus;
   bookingId?: string;
 };
+
+export type BookingConfirmationDetails = {
+  bookingId?: string;
+  dateLabel: string;
+  timeLabel: string;
+  guestsLabel: string;
+  durationLabel: string;
+};
