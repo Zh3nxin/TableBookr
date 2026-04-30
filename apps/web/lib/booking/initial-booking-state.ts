@@ -1,4 +1,3 @@
-import { fetchAvailability } from "@/lib/api/public-booking";
 import {
   AvailabilitySlot,
   BookingDateOption,
@@ -68,46 +67,14 @@ function buildDateOptions(timeZone: string): BookingDateOption[] {
   });
 }
 
-async function getInitialStepOneState(restaurantSlug: string, timeZone: string) {
-  const guestCount = 1;
+function getInitialStepOneState(timeZone: string) {
   const dateOptions = buildDateOptions(timeZone);
-  const preferredDates = [
-    dateOptions[1],
-    dateOptions[0],
-    ...dateOptions.slice(2)
-  ].filter((option): option is BookingDateOption => Boolean(option));
-
-  let selectedDate = dateOptions[0]?.value ?? getTodayDateInTimeZone(timeZone);
-  let initialSlots: AvailabilitySlot[] = [];
-
-  for (const option of preferredDates) {
-    const response = await fetchAvailability(restaurantSlug, {
-      date: option.value,
-      guestCount
-    });
-
-    if (response.slots.length > 0) {
-      selectedDate = option.value;
-      initialSlots = response.slots;
-      break;
-    }
-  }
-
-  if (initialSlots.length === 0 && dateOptions[0]) {
-    const fallbackResponse = await fetchAvailability(restaurantSlug, {
-      date: dateOptions[0].value,
-      guestCount
-    });
-
-    selectedDate = dateOptions[0].value;
-    initialSlots = fallbackResponse.slots;
-  }
 
   return {
     dateOptions,
-    initialDate: selectedDate,
-    initialGuestCount: guestCount,
-    initialSlots
+    initialDate: dateOptions[0]?.value ?? getTodayDateInTimeZone(timeZone),
+    initialGuestCount: 1,
+    initialSlots: []
   };
 }
 
@@ -141,32 +108,11 @@ function parseTime(value: string | undefined) {
   return /^\d{2}:\d{2}$/.test(value) ? value : null;
 }
 
-function pickInitialSelectedSlot(slots: AvailabilitySlot[], requestedTime: string | null) {
-  if (requestedTime) {
-    const requestedSlot = slots.find(
-      (slot) => slot.time === requestedTime && slot.status !== "blocked"
-    );
-
-    if (requestedSlot) {
-      return requestedSlot;
-    }
-  }
-
-  return (
-    slots.find((slot) => slot.time === "19:00" && slot.status !== "blocked") ??
-    slots.find((slot) => slot.status !== "blocked") ??
-    null
-  );
-}
-
 export async function loadInitialBookingPageState(
   restaurant: PublicRestaurantResponse,
   searchParams: BookingPageSearchParams
 ): Promise<InitialBookingPageState> {
-  const initialStepOneState = await getInitialStepOneState(
-    restaurant.slug,
-    restaurant.timezone
-  );
+  const initialStepOneState = getInitialStepOneState(restaurant.timezone);
   const requestedGuestCount = parseGuestCount(
     searchParams.guests,
     initialStepOneState.initialGuestCount
@@ -178,28 +124,13 @@ export async function loadInitialBookingPageState(
     initialStepOneState.dateOptions.some((option) => option.value === requestedDate);
 
   let initialDate = shouldUseRequestedDate ? requestedDate : initialStepOneState.initialDate;
-  let initialSlots = initialStepOneState.initialSlots;
-
-  if (
-    requestedGuestCount !== initialStepOneState.initialGuestCount ||
-    initialDate !== initialStepOneState.initialDate
-  ) {
-    const response = await fetchAvailability(restaurant.slug, {
-      date: initialDate,
-      guestCount: requestedGuestCount
-    });
-
-    initialSlots = response.slots;
-  }
-
-  const initialSelectedSlot = pickInitialSelectedSlot(initialSlots, requestedTime);
 
   return {
     dateOptions: initialStepOneState.dateOptions,
     initialDate,
-    initialSlots,
+    initialSlots: initialStepOneState.initialSlots,
     initialGuestCount: requestedGuestCount,
-    initialSelectedTime: initialSelectedSlot?.time ?? null,
-    initialIsReady: searchParams.ready === "1"
+    initialSelectedTime: requestedTime,
+    initialIsReady: searchParams.ready === "1" && Boolean(requestedTime)
   };
 }

@@ -1,0 +1,13 @@
+{
+  "name": "tablebookr",
+  "private": true,
+  "scripts": {
+    "db:start": "docker compose up -d --wait db",
+    "db:stop": "docker compose down",
+    "db:setup": "npm --prefix apps/api run prisma:migrate:dev && npm --prefix apps/api run prisma:seed",
+    "dev": "concurrently --names api,web --prefix-colors blue,green \"npm --prefix apps/api run start:dev\" \"npm --prefix apps/web run dev -- -p 3001\""
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}

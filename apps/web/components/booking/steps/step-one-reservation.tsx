@@ -55,6 +55,8 @@ export function StepOneReservation({
   onContinue: () => void;
 }) {
   const { messages } = useLanguage();
+  const hasVisibleSlots = slots.length > 0;
+  const showLoadingPlaceholder = isLoadingSlots && !hasVisibleSlots;
 
   return (
     <div className="space-y-6 p-8">
@@ -178,46 +180,63 @@ export function StepOneReservation({
           {messages.booking.availableTimes}
         </label>
 
-        {!availabilityError && slots.length > 0 ? (
-          <div className="grid grid-cols-3 gap-3 sm:grid-cols-5">
-            {slots.map((slot) => {
-              const isSelected = selectedSlot?.time === slot.time;
+        <div className="min-h-[156px]">
+          {!availabilityError && hasVisibleSlots ? (
+            <div
+              className={`grid grid-cols-3 gap-3 transition-opacity sm:grid-cols-5 ${
+                isLoadingSlots ? "pointer-events-none opacity-50" : "opacity-100"
+              }`}
+            >
+              {slots.map((slot) => {
+                const isSelected = selectedSlot?.time === slot.time;
 
-              return (
-                <button
-                  key={`${slot.time}-${slot.status}`}
-                  type="button"
-                  disabled={slot.status === "blocked"}
-                  onClick={() => onSelectSlot(slot)}
-                  className={`rounded-lg border py-3 text-[14px] font-medium transition-all ${getSlotButtonClasses(
-                    slot.status,
-                    isSelected
-                  )}`}
-                >
-                  {slot.time}
-                </button>
-              );
-            })}
-          </div>
-        ) : null}
+                return (
+                  <button
+                    key={`${slot.time}-${slot.status}`}
+                    type="button"
+                    disabled={isLoadingSlots || slot.status === "blocked"}
+                    onClick={() => onSelectSlot(slot)}
+                    className={`rounded-lg border py-3 text-[14px] font-medium transition-all ${getSlotButtonClasses(
+                      slot.status,
+                      isSelected
+                    )}`}
+                  >
+                    {slot.time}
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
 
-        {availabilityError ? (
-          <div className="rounded-lg border border-[var(--color-error-soft)] bg-[var(--color-error-bg)] px-4 py-3 text-sm text-[var(--color-error-strong)]">
-            {availabilityError}
-          </div>
-        ) : null}
+          {showLoadingPlaceholder ? (
+            <div className="grid grid-cols-3 gap-3 sm:grid-cols-5">
+              {Array.from({ length: 10 }, (_, index) => (
+                <div
+                  key={index}
+                  className="h-[46px] rounded-lg border border-[var(--color-outline-soft)] bg-[#f3f3f6]"
+                />
+              ))}
+            </div>
+          ) : null}
 
-        {!availabilityError && slots.length === 0 ? (
-          <div className="rounded-lg border border-[var(--color-outline-soft)] bg-[#f3f3f6] px-4 py-3 text-sm text-[var(--color-muted)]">
-            {messages.booking.noTimesAvailable}
-          </div>
-        ) : null}
+          {availabilityError ? (
+            <div className="rounded-lg border border-[var(--color-error-soft)] bg-[var(--color-error-bg)] px-4 py-3 text-sm text-[var(--color-error-strong)]">
+              {availabilityError}
+            </div>
+          ) : null}
 
-        {isLoadingSlots ? (
-          <p className="mt-3 text-[13px] text-[var(--color-muted)]">
-            {messages.booking.updatingTimes}
-          </p>
-        ) : null}
+          {!availabilityError && !isLoadingSlots && slots.length === 0 ? (
+            <div className="rounded-lg border border-[var(--color-outline-soft)] bg-[#f3f3f6] px-4 py-3 text-sm text-[var(--color-muted)]">
+              {messages.booking.noTimesAvailable}
+            </div>
+          ) : null}
+
+          {isLoadingSlots ? (
+            <p className="mt-3 text-[13px] text-[var(--color-muted)]">
+              {messages.booking.updatingTimes}
+            </p>
+          ) : null}
+        </div>
       </section>
 
       <div className="flex justify-end pt-2">

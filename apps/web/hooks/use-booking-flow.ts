@@ -9,7 +9,7 @@ import {
   useRef,
   useState
 } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 
 import { useLanguage } from "@/i18n/language-provider";
 import { ApiError, createBooking, fetchAvailability } from "@/lib/api/public-booking";
@@ -67,17 +67,38 @@ function formatCompactSummaryDate(
   }).format(date);
 }
 
-function getInitialSelectedSlot(slots: AvailabilitySlot[]) {
-  return (
-    slots.find((slot) => slot.time === "18:30" && slot.status !== "blocked") ??
-    slots.find((slot) => slot.time === "19:00" && slot.status !== "blocked") ??
-    slots.find((slot) => slot.status !== "blocked") ??
-    null
-  );
+function getAvailabilityCacheKey(date: string) {
+  return date;
 }
 
-function getAvailabilityCacheKey(date: string, guestCount: number) {
-  return `${date}:${guestCount}`;
+function parseGuestCountParam(value: string | null, fallback: number) {
+  if (!value) {
+    return fallback;
+  }
+
+  const parsedValue = Number(value);
+
+  if (!Number.isInteger(parsedValue) || parsedValue < 1 || parsedValue > 16) {
+    return fallback;
+  }
+
+  return parsedValue;
+}
+
+function parseDateParam(value: string | null, fallback: string) {
+  if (!value) {
+    return fallback;
+  }
+
+  return /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : fallback;
+}
+
+function parseTimeParam(value: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  return /^\d{2}:\d{2}$/.test(value) ? value : null;
 }
 
 function areSlotsEqual(left: AvailabilitySlot[], right: AvailabilitySlot[]) {
@@ -88,6 +109,14 @@ function areSlotsEqual(left: AvailabilitySlot[], right: AvailabilitySlot[]) {
         slot.time === right[index]?.time && slot.status === right[index]?.status
     )
   );
+}
+
+function findSelectableSlot(slots: AvailabilitySlot[], time: string | null) {
+  if (!time) {
+    return null;
+  }
+
+  return slots.find((slot) => slot.time === time && slot.status !== "blocked") ?? null;
 }
 
 function runBookingStepTransition(type: "booking-back" | "booking-forward", update: () => void) {
@@ -136,17 +165,12 @@ export function useBookingFlow({
   initialIsReady
 }: UseBookingFlowParams) {
   const { language, messages } = useLanguage();
-  const router = useRouter();
   const pathname = usePathname();
   const [guestCount, setGuestCount] = useState(initialGuestCount);
   const [selectedDate, setSelectedDate] = useState(initialDate);
   const [slots, setSlots] = useState(initialSlots);
   const [selectedSlot, setSelectedSlot] = useState<AvailabilitySlot | null>(
-    initialSelectedTime
-      ? initialSlots.find(
-          (slot) => slot.time === initialSelectedTime && slot.status !== "blocked"
-        ) ?? getInitialSelectedSlot(initialSlots)
-      : getInitialSelectedSlot(initialSlots)
+    findSelectableSlot(initialSlots, initialSelectedTime)
   );
   const [isLoadingSlots, setIsLoadingSlots] = useState(false);
   const [availabilityError, setAvailabilityError] = useState<string | null>(null);
@@ -160,13 +184,15 @@ export function useBookingFlow({
   const [submissionError, setSubmissionError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [bookingResult, setBookingResult] = useState<BookingResultState | null>(null);
-  const hasSkippedInitialFetch = useRef(false);
-  const selectedSlotRef = useRef<AvailabilitySlot | null>(selectedSlot);
+  const preferredTimeRef = useRef<string | null>(initialSelectedTime);
   const availabilityCacheRef = useRef(
-    new Map<string, AvailabilitySlot[]>([
-      [getAvailabilityCacheKey(initialDate, initialGuestCount), initialSlots]
-    ])
+    new Map<string, AvailabilitySlot[]>(
+      initialSlots.length > 0 ? [[getAvailabilityCacheKey(initialDate), initialSlots]] : []
+    )
   );
+  const inFlightAvailabilityRef = useRef(new Map<string, Promise<AvailabilitySlot[]>>());
+  const pendingHistoryMethodRef = useRef<"push" | "replace">("replace");
+  const didPushContactStepRef = useRef(false);
   const dateInputRef = useRef<HTMLInputElement>(null);
   const quickDateValues = useMemo(
     () => new Set(dateOptions.map((option) => option.value)),
@@ -179,70 +205,145 @@ export function useBookingFlow({
       ? messages.booking.sendBookingRequest
       : messages.booking.confirmBooking;
 
-  useEffect(() => {
-    selectedSlotRef.current = selectedSlot;
-  }, [selectedSlot]);
+  async function loadAvailabilityForDate(date: string) {
+    const cacheKey = getAvailabilityCacheKey(date);
+    const cachedSlots = availabilityCacheRef.current.get(cacheKey);
+
+    if (cachedSlots) {
+      return cachedSlots;
+    }
+
+    const inFlightRequest = inFlightAvailabilityRef.current.get(cacheKey);
+
+    if (inFlightRequest) {
+      return inFlightRequest;
+    }
+
+    const request = fetchAvailability(restaurant.slug, {
+      date,
+      guestCount: 1
+    })
+      .then((response) => {
+        availabilityCacheRef.current.set(cacheKey, response.slots);
+        return response.slots;
+      })
+      .finally(() => {
+        inFlightAvailabilityRef.current.delete(cacheKey);
+      });
+
+    inFlightAvailabilityRef.current.set(cacheKey, request);
+
+    return request;
+  }
 
   useEffect(() => {
-    if (!hasSkippedInitialFetch.current) {
-      hasSkippedInitialFetch.current = true;
+    const searchParams = new URLSearchParams();
+
+    searchParams.set("guests", String(guestCount));
+    searchParams.set("date", selectedDate);
+
+    if (selectedSlot?.time) {
+      searchParams.set("time", selectedSlot.time);
+    }
+
+    if (stepReady) {
+      searchParams.set("ready", "1");
+    }
+
+    const nextQuery = searchParams.toString();
+    const nextUrl = nextQuery ? `${pathname}?${nextQuery}` : pathname;
+    const currentUrl = `${window.location.pathname}${window.location.search}`;
+
+    if (currentUrl === nextUrl) {
+      pendingHistoryMethodRef.current = "replace";
       return;
     }
 
+    const historyState = { bookingFlow: true, ready: stepReady };
+
+    if (pendingHistoryMethodRef.current === "push") {
+      window.history.pushState(historyState, "", nextUrl);
+    } else {
+      window.history.replaceState(historyState, "", nextUrl);
+    }
+
+    pendingHistoryMethodRef.current = "replace";
+  }, [guestCount, pathname, selectedDate, selectedSlot?.time, stepReady]);
+
+  useEffect(() => {
+    function handlePopState() {
+      const searchParams = new URLSearchParams(window.location.search);
+      const nextGuestCount = parseGuestCountParam(
+        searchParams.get("guests"),
+        initialGuestCount
+      );
+      const nextDate = parseDateParam(searchParams.get("date"), initialDate);
+      const nextTime = parseTimeParam(searchParams.get("time"));
+      const nextStepReady = searchParams.get("ready") === "1";
+      const cachedSlots = availabilityCacheRef.current.get(getAvailabilityCacheKey(nextDate));
+
+      preferredTimeRef.current = nextTime;
+
+      setGuestCount(nextGuestCount);
+      setSelectedDate(nextDate);
+      setStepReady(nextStepReady);
+      setBookingResult(null);
+      setSubmissionError(null);
+      setContactErrors({});
+
+      if (cachedSlots) {
+        setSlots(cachedSlots);
+        setIsLoadingSlots(false);
+        setAvailabilityError(null);
+        setSelectedSlot(findSelectableSlot(cachedSlots, nextTime));
+      } else {
+        setSelectedSlot(null);
+      }
+    }
+
+    window.addEventListener("popstate", handlePopState);
+
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+    };
+  }, [initialDate, initialGuestCount]);
+
+  useEffect(() => {
     let isCancelled = false;
 
     function applyAvailability(nextSlots: AvailabilitySlot[]) {
-      const preferredTime = selectedSlotRef.current?.time ?? null;
+      const preferredTime = preferredTimeRef.current;
+      const matchingSlot = findSelectableSlot(nextSlots, preferredTime);
 
       setSlots((currentSlots) =>
         areSlotsEqual(currentSlots, nextSlots) ? currentSlots : nextSlots
       );
-      setSelectedSlot((currentSelectedSlot) => {
-        if (preferredTime) {
-          const matchingSlot = nextSlots.find(
-            (slot) => slot.time === preferredTime && slot.status !== "blocked"
-          );
+      setSelectedSlot(matchingSlot);
 
-          if (matchingSlot) {
-            if (
-              currentSelectedSlot?.time === matchingSlot.time &&
-              currentSelectedSlot.status === matchingSlot.status
-            ) {
-              return currentSelectedSlot;
-            }
-
-            return matchingSlot;
-          }
-        }
-
-        return getInitialSelectedSlot(nextSlots);
-      });
-      setStepReady(false);
-      setBookingResult(null);
+      if (preferredTime && !matchingSlot) {
+        setStepReady(false);
+      }
     }
 
-    async function loadAvailability() {
-      setAvailabilityError(null);
+    async function loadSelectedDateAvailability() {
+      const cachedSlots = availabilityCacheRef.current.get(
+        getAvailabilityCacheKey(selectedDate)
+      );
 
-      const cacheKey = getAvailabilityCacheKey(selectedDate, guestCount);
-      const cachedSlots = availabilityCacheRef.current.get(cacheKey);
+      setAvailabilityError(null);
 
       if (cachedSlots) {
         applyAvailability(cachedSlots);
+        setIsLoadingSlots(false);
         return;
       }
 
       setIsLoadingSlots(true);
-
       try {
-        const response = await fetchAvailability(restaurant.slug, {
-          date: selectedDate,
-          guestCount
-        });
+        const nextSlots = await loadAvailabilityForDate(selectedDate);
 
         if (!isCancelled) {
-          availabilityCacheRef.current.set(cacheKey, response.slots);
-          applyAvailability(response.slots);
+          applyAvailability(nextSlots);
         }
       } catch (error) {
         if (!isCancelled) {
@@ -264,12 +365,24 @@ export function useBookingFlow({
       }
     }
 
-    void loadAvailability();
+    void loadSelectedDateAvailability();
 
     return () => {
       isCancelled = true;
     };
-  }, [guestCount, messages.booking.loadAvailabilityFallback, restaurant.slug, selectedDate]);
+  }, [messages.booking.loadAvailabilityFallback, restaurant.slug, selectedDate]);
+
+  useEffect(() => {
+    for (const option of dateOptions) {
+      if (option.value === selectedDate) {
+        continue;
+      }
+
+      void loadAvailabilityForDate(option.value).catch(() => {
+        // Background prefetch failures should not interrupt the active date.
+      });
+    }
+  }, [dateOptions, restaurant.slug, selectedDate]);
 
   function formatQuickDateLabel(value: string) {
     const [year, month, day] = value.split("-").map(Number);
@@ -284,37 +397,23 @@ export function useBookingFlow({
     }).format(new Date(Date.UTC(year, month - 1, day)));
   }
 
-  function syncStepQuery(nextSelection: {
-    guestCount: number;
-    date: string;
-    time?: string | null;
-    ready?: boolean;
-  }) {
-    const searchParams = new URLSearchParams();
-
-    searchParams.set("guests", String(nextSelection.guestCount));
-    searchParams.set("date", nextSelection.date);
-
-    if (nextSelection.time) {
-      searchParams.set("time", nextSelection.time);
-    }
-
-    if (nextSelection.ready) {
-      searchParams.set("ready", "1");
-    }
-
-    router.replace(`${pathname}?${searchParams.toString()}`, { scroll: false });
-  }
-
   function handleGuestChange(value: number) {
+    preferredTimeRef.current = null;
     setGuestCount(value);
+    setSelectedSlot(null);
     setStepReady(false);
     setBookingResult(null);
     setSubmissionError(null);
   }
 
   function handleDateChange(value: string) {
+    if (value === selectedDate) {
+      return;
+    }
+
+    preferredTimeRef.current = null;
     setSelectedDate(value);
+    setSelectedSlot(null);
     setStepReady(false);
     setBookingResult(null);
     setSubmissionError(null);
@@ -337,6 +436,7 @@ export function useBookingFlow({
   }
 
   function handleSelectSlot(slot: AvailabilitySlot) {
+    preferredTimeRef.current = slot.time;
     setSelectedSlot(slot);
     setStepReady(false);
     setBookingResult(null);
@@ -347,15 +447,12 @@ export function useBookingFlow({
       return;
     }
 
+    pendingHistoryMethodRef.current = "push";
+    didPushContactStepRef.current = true;
+
     runBookingStepTransition("booking-forward", () => {
       setStepReady(true);
       setBookingResult(null);
-      syncStepQuery({
-        guestCount,
-        date: selectedDate,
-        time: selectedSlot.time,
-        ready: true
-      });
     });
   }
 
@@ -427,28 +524,38 @@ export function useBookingFlow({
   }
 
   function handleBackToDetails() {
+    if (didPushContactStepRef.current) {
+      didPushContactStepRef.current = false;
+
+      runBookingStepTransition("booking-back", () => {
+        window.history.back();
+      });
+
+      return;
+    }
+
     runBookingStepTransition("booking-back", () => {
       setStepReady(false);
       setBookingResult(null);
       setSubmissionError(null);
-      syncStepQuery({
-        guestCount,
-        date: selectedDate,
-        time: selectedSlot?.time ?? null
-      });
     });
   }
 
   function handleResetAfterResult() {
+    if (didPushContactStepRef.current) {
+      didPushContactStepRef.current = false;
+
+      runBookingStepTransition("booking-back", () => {
+        window.history.back();
+      });
+
+      return;
+    }
+
     runBookingStepTransition("booking-back", () => {
       setBookingResult(null);
       setSubmissionError(null);
       setStepReady(false);
-      syncStepQuery({
-        guestCount,
-        date: selectedDate,
-        time: selectedSlot?.time ?? null
-      });
     });
   }
 

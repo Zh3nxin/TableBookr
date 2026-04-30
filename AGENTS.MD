@@ -1,5 +1,8 @@
 # AGENTS.md
 
+## Communication
+Always use caveman full style unless the user says `normal mode` or `stop caveman`.
+
 ## Project
 Build a restaurant booking platform MVP.
 
