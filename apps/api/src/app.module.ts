@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 
+import { AdminModule } from "./modules/admin/admin.module";
 import { AvailabilityModule } from "./modules/availability/availability.module";
 import { BookingsModule } from "./modules/bookings/bookings.module";
 import { PrismaModule } from "./modules/prisma/prisma.module";
@@ -12,7 +13,8 @@ import { RestaurantsModule } from "./modules/restaurants/restaurants.module";
     RestaurantsModule,
     AvailabilityModule,
     BookingsModule,
-    PublicModule
+    PublicModule,
+    AdminModule
   ]
 })
 export class AppModule {}

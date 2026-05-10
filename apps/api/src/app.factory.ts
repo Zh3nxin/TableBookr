@@ -18,8 +18,8 @@ export function getAllowedOrigins() {
 export function configureApp(app: INestApplication) {
   app.enableCors({
     origin: getAllowedOrigins(),
-    methods: ["GET", "POST", "OPTIONS"],
-    allowedHeaders: ["Content-Type"],
+    methods: ["GET", "POST", "PATCH", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
     credentials: false
   });
 

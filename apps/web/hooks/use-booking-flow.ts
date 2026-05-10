@@ -219,6 +219,8 @@ export function useBookingFlow({
       return inFlightRequest;
     }
 
+    // Slots only depend on date in Phase 1 because guest count changes the final outcome,
+    // not which start times are open. Reusing this cache keeps the slot grid stable.
     const request = fetchAvailability(restaurant.slug, {
       date,
       guestCount: 1
@@ -237,6 +239,7 @@ export function useBookingFlow({
   }
 
   useEffect(() => {
+    // Keep the current step in the URL so refresh/back/forward preserve the booking flow.
     const searchParams = new URLSearchParams();
 
     searchParams.set("guests", String(guestCount));
@@ -292,6 +295,7 @@ export function useBookingFlow({
       setContactErrors({});
 
       if (cachedSlots) {
+        // Popstate should feel instant when we already know that date's slot grid.
         setSlots(cachedSlots);
         setIsLoadingSlots(false);
         setAvailabilityError(null);
@@ -378,6 +382,7 @@ export function useBookingFlow({
         continue;
       }
 
+      // Prefetch nearby dates quietly so chip-to-chip browsing feels immediate.
       void loadAvailabilityForDate(option.value).catch(() => {
         // Background prefetch failures should not interrupt the active date.
       });
@@ -398,6 +403,8 @@ export function useBookingFlow({
   }
 
   function handleGuestChange(value: number) {
+    // Guest count can change the final booking status, so we clear the chosen slot and force
+    // the guest to re-confirm instead of showing a noisy slot reload that would not add value.
     preferredTimeRef.current = null;
     setGuestCount(value);
     setSelectedSlot(null);
@@ -447,6 +454,8 @@ export function useBookingFlow({
       return;
     }
 
+    // Native history keeps the booking card animation local and avoids a full router navigation
+    // for what is really a state change inside one page.
     pendingHistoryMethodRef.current = "push";
     didPushContactStepRef.current = true;
 
@@ -501,6 +510,8 @@ export function useBookingFlow({
     setSubmissionError(null);
 
     try {
+      // The server re-runs all booking rules on submit so stale UI state cannot create
+      // an invalid booking after capacity or lead-time changes.
       const response = await createBooking(restaurant.slug, {
         guestCount,
         date: selectedDate,

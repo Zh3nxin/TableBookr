@@ -22,6 +22,8 @@ enum Weekday {
 enum BookingStatus {
   CONFIRMED @map("confirmed")
   PENDING   @map("pending")
+  REJECTED  @map("rejected")
+  CANCELED  @map("canceled")
 
   @@map("booking_status")
 }
@@ -33,18 +35,19 @@ enum BookingSource {
 }
 
 model Restaurant {
-  id          String              @id @default(uuid()) @db.Uuid
-  name        String
-  slug        String              @unique
-  email       String
-  phone       String
-  timezone    String
-  createdAt   DateTime            @default(now()) @map("created_at")
-  updatedAt   DateTime            @updatedAt @map("updated_at")
-  settings    RestaurantSettings?
+  id           String              @id @default(uuid()) @db.Uuid
+  name         String
+  slug         String              @unique
+  email        String
+  phone        String
+  timezone     String
+  createdAt    DateTime            @default(now()) @map("created_at")
+  updatedAt    DateTime            @updatedAt @map("updated_at")
+  settings     RestaurantSettings?
   openingHours OpeningHour[]
   closedDates ClosedDate[]
-  bookings    Booking[]
+  bookings     Booking[]
+  adminUsers   AdminUser[]
 
   @@map("restaurants")
 }
@@ -116,4 +119,21 @@ model Booking {
   @@map("bookings")
   @@index([restaurantId])
   @@index([restaurantId, bookingDate, status])
+}
+
+model AdminUser {
+  id           String     @id @default(uuid()) @db.Uuid
+  /// Each admin belongs to exactly one restaurant in this product.
+  /// There are intentionally no roles or cross-restaurant memberships.
+  restaurantId String     @map("restaurant_id") @db.Uuid
+  name         String
+  email        String     @unique
+  passwordHash String     @map("password_hash")
+  isActive     Boolean    @default(true) @map("is_active")
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@map("admin_users")
+  @@index([restaurantId])
 }
